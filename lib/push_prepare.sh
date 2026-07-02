@@ -6,8 +6,6 @@ LIB_DIR="${GIT_VERSION_HOOK_LIB:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 # shellcheck source=version.sh
 source "${LIB_DIR}/version.sh"
 
-ZERO_SHA="0000000000000000000000000000000000000000"
-
 rebase_has_version_conflict() {
   git diff --name-only --diff-filter=U 2>/dev/null | grep -qx '.version'
 }
@@ -26,15 +24,22 @@ resolve_version_rebase_conflict() {
 integrate_remote_branch() {
   local remote="$1"
   local branch="$2"
-  local remote_sha="$3"
-
-  if [ "$remote_sha" = "$ZERO_SHA" ]; then
-    return 0
-  fi
 
   git fetch "$remote" "$branch"
 
-  if git merge-base --is-ancestor "$remote_sha" HEAD 2>/dev/null; then
+  local remote_sha local_sha
+  if ! remote_sha="$(git rev-parse "refs/remotes/${remote}/${branch}" 2>/dev/null)"; then
+    return 0
+  fi
+
+  local_sha="$(git rev-parse HEAD)"
+
+  if [ "$local_sha" = "$remote_sha" ]; then
+    return 0
+  fi
+
+  # Re-read remote after fetch: stale local tracking refs must not skip rebase
+  if git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
     return 0
   fi
 
@@ -161,14 +166,7 @@ push_prepare_for_args() {
     return 0
   fi
 
-  local remote_sha
-  if remote_sha="$(git rev-parse "refs/remotes/${_GP_REMOTE}/${_GP_BRANCH}" 2>/dev/null)"; then
-    :
-  else
-    remote_sha="$ZERO_SHA"
-  fi
-
-  integrate_remote_branch "$_GP_REMOTE" "$_GP_BRANCH" "$remote_sha"
+  integrate_remote_branch "$_GP_REMOTE" "$_GP_BRANCH"
 
   if ! is_local_ahead_of_remote "$_GP_REMOTE" "$_GP_BRANCH"; then
     echo "git-version: no unpushed commits, skipping .version update"
