@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Optional global git shim: intercept `git push` and run the repo wrapper when installed.
+# Install via ./install-shim.sh — see README.
+
+set -euo pipefail
+
+shim_home="${GIT_COMMIT_VERSION_SHIM_HOME:-${HOME}/.git-commit-version}"
+real_git="${GIT_COMMIT_VERSION_REAL_GIT:-}"
+
+if [ -z "$real_git" ] && [ -f "${shim_home}/real-git-path" ]; then
+  real_git="$(tr -d '[:space:]' < "${shim_home}/real-git-path")"
+fi
+
+if [ -z "$real_git" ] || [ ! -x "$real_git" ]; then
+  real_git="$(command -v git 2>/dev/null || true)"
+fi
+
+if [ -z "$real_git" ]; then
+  echo "git-commit-version shim: real git not found" >&2
+  exit 1
+fi
+
+# Avoid recursion when this script is invoked as `git`
+if [ "$(basename "$real_git")" = "git" ] && [ "$(cd "$(dirname "$real_git")" && pwd)" = "$(cd "$(dirname "$0")" && pwd)" ]; then
+  echo "git-commit-version shim: misconfigured real-git-path (points to shim)" >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "push" ] && [ "${GIT_COMMIT_VERSION_SHIM_ACTIVE:-}" != "1" ]; then
+  export GIT_COMMIT_VERSION_SHIM_ACTIVE=1
+  repo_root="$("$real_git" rev-parse --show-toplevel 2>/dev/null || true)"
+  wrapper="${repo_root}/.git/git-version/bin/git-push-with-version.sh"
+  if [ -n "$repo_root" ] && [ -x "$wrapper" ]; then
+    shift
+    exec "$wrapper" "$@"
+  fi
+fi
+
+exec "$real_git" "$@"

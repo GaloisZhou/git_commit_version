@@ -2,214 +2,226 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Auto-update a `.version` file in your project root before push and amend it into the **latest commit** on the current branch—no standalone version commit.
+Auto-update a `.version` file before push and amend it into the latest commit (no extra version commit).
 
-## Overview
+---
 
-### Background
+## Quick start
 
-Typical workflow:
-
-1. Edit code
-2. `git add`
-3. `git commit`
-4. push
-
-This tool runs **before step 4**, updates `.version`, and amends it into the last commit.
-
-### Important: use `git pushv`, not `git push`
-
-`push` is a Git **built-in** subcommand; `alias.push` **does not apply** (verified on Git 2.x, including 2.50).
-
-| Command | Updates `.version` |
-|---------|-------------------|
-| `git pushv` | Yes |
-| `git ggpushv` | Yes (push `origin` + current branch) |
-| `git push` | No — built-in push, wrapper skipped |
-
-After install, `pushv` and `ggpushv` aliases are registered. If you use oh-my-zsh:
+### 1. Clone this tool
 
 ```bash
-alias ggpush='git push origin $(git_current_branch)'
-```
-
-Change `push` to `pushv`:
-
-```bash
-alias ggpush='git pushv origin $(git_current_branch)'
-```
-
-Or: `alias ggpush='git ggpushv'`.
-
-### Why not amend only in a pre-push hook?
-
-When `pre-push` runs, Git has already fixed which commit SHA to push. Amending inside the hook causes:
-
-1. Local HEAD gets a new commit (with `.version`)
-2. The outer `git push` still pushes the **old** commit
-3. Local and remote diverge → conflicts on the next push
-
-Version updates must happen **before push negotiation**, via the `git pushv` wrapper.
-
-### `.version` format
-
-```
-yyyyMMdd.HHmmss.sequence_no
-```
-
-Example: `20260630.143025.12`
-
-| Field | Description |
-|-------|-------------|
-| `yyyyMMdd.HHmmss` | Timestamp at push time |
-| `sequence_no` | Global increment from `0`, **never resets** |
-
-### What happens on push
-
-1. `git fetch` for the target branch
-2. `git rebase origin/<branch>` if local is behind
-3. Update `.version` **only when there are unpushed commits** (skip if local matches remote)
-4. Take max `sequence_no` from HEAD / remote / working tree, then `git commit --amend`
-5. Run `git push`; on failure, **restore the pre-amend commit**
-
-### Conflict handling
-
-- **`.version` only**: auto-resolve with max(sequence)+1, continue rebase
-- **Other files**: abort; resolve manually
-
-### Existing pre-push hooks
-
-- Your hook is kept as `.git/hooks/pre-push.user`
-- `.git/hooks/pre-push` runs **only** `pre-push.user` (version logic is not in pre-push)
-
-## Layout
-
-```
-git_commit_version/
-├── LICENSE
-├── README.md
-├── README.zh-CN.md
-├── install.sh
-├── test_version.sh
-├── bin/git-push-with-version.sh
-├── lib/version.sh
-└── lib/push_prepare.sh
-```
-
-After install in a project:
-
-```
-your-project/.git/git-version/   # copied wrapper + lib
-your-project/.git/config         # alias.pushv / alias.ggpushv
-your-project/.git/hooks/pre-push # user hook only
-```
-
-## Usage
-
-### Install
-
-```bash
-# 1. Clone this tool
 git clone https://github.com/GaloisZhou/git_commit_version.git
+```
 
-# 2. Go to your project repo
+### 2. Install into your project
+
+```bash
 cd /path/to/your-project
-
-# 3. Install (adjust path to your clone)
 ~/git_commit_version/install.sh
 ```
 
-Scripts are copied into **your project’s** `.git/git-version/`; `alias.pushv` points there. **You may delete the clone** after install—it is only needed again when upgrading (re-run `install.sh` from a fresh clone).
+You can delete the clone after install. Re-clone and re-run `install.sh` only when upgrading.
 
-Verify:
+### 3. Daily push
 
-```bash
-git config --local --get alias.pushv
-GIT_VERSION_DEBUG=1 git pushv
-# Expected: git-version: wrapper ran, push args=...
-```
-
-### Daily use
-
-In your **project repo**:
+Works immediately after install (no extra setup):
 
 ```bash
 git add .
 git commit -m "your message"
-git pushv
+
+git pushv              # like git push (needs upstream)
 # or
-git ggpushv
+git ggpushv            # like git push origin $(current branch)
 ```
 
-On success:
+Success looks like:
 
 ```
 git-version: .version -> 20260630.143025.12
 ```
 
-When already up to date:
+### 4. (Optional) Use plain `git push`
 
-```
-git-version: no unpushed commits, skipping .version update
-Everything up-to-date
-```
-
-### Run tests
-
-From this tool’s repo root:
+If you prefer `git push` instead of `git pushv`:
 
 ```bash
-./test_version.sh
+cd ~/git_commit_version   # or wherever you cloned
+./install-shim.sh
 ```
 
-### Skip version maintenance
+Add this line to **your shell config file** (pick one, not both):
 
 ```bash
-git push              # native push, no .version update
+# Check your shell first: echo $SHELL
+# contains zsh → edit ~/.zshrc
+# contains bash → edit ~/.bashrc
+
+export PATH="$HOME/.git-commit-version/bin:$PATH"
+```
+
+Reload (pick one):
+
+```bash
+# zsh
+source ~/.zshrc
+
+# bash
+source ~/.bashrc
+```
+
+Open a new terminal, then **`git push` works** in any repo where step 2 was done.
+
+For Git GUI apps, set **Git executable** to `~/.git-commit-version/bin/git`.
+
+### Verify
+
+```bash
+git config --local --get alias.pushv
+GIT_VERSION_DEBUG=1 git pushv    # or: git push (if shim installed)
+```
+
+Expected: `git-version: wrapper ran, push args=...`
+
+### 5. (Optional) Keep using oh-my-zsh `ggpush`
+
+If you already use `ggpush`, update **zsh** `~/.zshrc`:
+
+```bash
+alias ggpush='git pushv origin $(git_current_branch)'
+# or: alias ggpush='git ggpushv'
+```
+
+Run `source ~/.zshrc`, then use `ggpush`. bash users: stick to step 3 commands.
+
+---
+
+## Details
+
+<details>
+<summary><b>What is <code>.version</code>?</b></summary>
+
+Format: `yyyyMMdd.HHmmss.sequence_no` (example: `20260630.143025.12`)
+
+| Field | Description |
+|-------|-------------|
+| `yyyyMMdd.HHmmss` | Timestamp at push time |
+| `sequence_no` | Global increment from `0`, never resets |
+
+</details>
+
+<details>
+<summary><b>What happens on push?</b></summary>
+
+1. `git fetch` for the target branch
+2. `git rebase` if local is behind remote
+3. Update `.version` only when there are **unpushed commits**
+4. `git commit --amend` to include `.version` in the last commit
+5. `git push`; on failure, restore the pre-amend commit
+
+</details>
+
+<details>
+<summary><b>Why <code>git pushv</code> instead of <code>git push</code>?</b></summary>
+
+`push` is a Git **built-in** subcommand; `alias.push` does not apply (Git 2.x+).
+
+Amending inside a `pre-push` hook also fails: Git already fixed the SHA to push, so the outer push would still send the old commit and cause divergence.
+
+Version updates must run **before push negotiation** — via `git pushv` or the optional git shim.
+
+</details>
+
+<details>
+<summary><b>Other ways to invoke push</b></summary>
+
+| Command | Updates `.version` |
+|---------|-------------------|
+| `git pushv` | Yes |
+| `git ggpushv` | Yes (`origin` + current branch) |
+| `git push` | Only with shim (step 4) |
+| `git push` (no shim) | No |
+
+Shell wrapper alternative (terminal only, no PATH change):
+
+```bash
+git() {
+  if [ "${1:-}" = "push" ]; then shift; command git pushv "$@"; else command git "$@"; fi
+}
+```
+
+</details>
+
+<details>
+<summary><b>Existing pre-push hooks</b></summary>
+
+Your hook is kept as `.git/hooks/pre-push.user`. The installed `.git/hooks/pre-push` runs only `pre-push.user`.
+
+</details>
+
+<details>
+<summary><b>Conflict handling</b></summary>
+
+- **`.version` only**: auto max(sequence)+1, continue rebase
+- **Other files**: abort; resolve manually
+
+</details>
+
+<details>
+<summary><b>Troubleshooting</b></summary>
+
+**Skip version update on purpose**
+
+```bash
+git push              # native push, no .version
 git pushv --no-verify # update .version, skip pre-push.user
 ```
 
-### `grep usage` errors
+**`grep usage` errors** — often from a tag script in `pre-push.user`; unrelated to `.version`.
 
-Often from a tag-cleanup script in `pre-push.user` (`grep -v ${1}` with empty args when there are no tags). Unrelated to `.version`; safe to ignore.
-
-### Fix divergence from older installs
+**Fix divergence from older installs**
 
 ```bash
-git fetch origin
-git reset --hard origin/main
-git pushv
+git fetch origin && git reset --hard origin/main && git pushv
 ```
 
-### Uninstall
+</details>
+
+<details>
+<summary><b>Uninstall</b></summary>
 
 In your project repo:
 
 ```bash
 git config --local --unset alias.pushv
 git config --local --unset alias.ggpushv
-git config --local --unset alias.push 2>/dev/null   # legacy
+git config --local --unset alias.push 2>/dev/null
 rm -rf .git/git-version
 rm .git/hooks/pre-push
 ```
 
-## Flow
+</details>
+
+<details>
+<summary><b>Project layout</b></summary>
 
 ```
-git pushv / ggpushv
-    │
-    ▼
-git-push-with-version.sh
-    ├─► fetch / rebase (if behind)
-    ├─► no new commits? → skip .version, push
-    ├─► has new commits? → write .version + amend
-    ▼
-git push (built-in, alias disabled)
-    ├─► failed? → restore pre-amend
-    ├─► pre-push.user (if any)
-    ▼
-remote updated
+git_commit_version/
+├── install.sh          # run in each project repo
+├── install-shim.sh     # optional, for plain git push
+├── bin/
+└── lib/
 ```
+
+After install in a project:
+
+```
+your-project/.git/git-version/   # copied scripts
+your-project/.git/config         # alias.pushv / alias.ggpushv
+```
+
+</details>
 
 ## License
 
