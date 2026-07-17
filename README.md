@@ -163,8 +163,17 @@ Your hook is kept as `.git/hooks/pre-push.user`. The installed `.git/hooks/pre-p
 <details>
 <summary><b>Conflict handling</b></summary>
 
-- **`.version` only**: auto max(sequence)+1, continue rebase
-- **Other files**: abort; resolve manually
+- **Same-branch push rebase, `.version` only**: auto max(sequence)+1, continue
+- **Cross-branch merge (e.g. `dev` ↔ `qa`), `.version` only**: merge driver auto max(sequence)+1
+- **Other files**: still resolve manually
+
+`install.sh` will:
+
+1. Copy the merge driver to `.git/git-version/lib/merge-version.sh`
+2. Set local `merge.version-max.driver`
+3. Ensure repo-root `.gitattributes` contains: `.version merge=version-max`
+
+**Note**: commit and push `.gitattributes`. Each collaborator must still run `install.sh` once (driver binary + `git config` live under local `.git`).
 
 </details>
 
@@ -197,8 +206,11 @@ In your project repo:
 git config --local --unset alias.pushv
 git config --local --unset alias.ggpushv
 git config --local --unset alias.push 2>/dev/null
+git config --local --unset merge.version-max.name
+git config --local --unset merge.version-max.driver
 rm -rf .git/git-version
 rm .git/hooks/pre-push
+# optional: remove ".version merge=version-max" from .gitattributes
 ```
 
 </details>

@@ -163,8 +163,17 @@ git() {
 <details>
 <summary><b>冲突处理</b></summary>
 
-- **仅 `.version` 冲突**：自动取 max(sequence)+1 后继续 rebase
-- **其他文件冲突**：中止，需手动解决
+- **同分支 push 前 rebase，仅 `.version` 冲突**：自动取 max(sequence)+1 后继续
+- **跨分支 merge（如 `dev` ↔ `qa`），仅 `.version` 冲突**：由 merge driver 自动取 max(sequence)+1
+- **其他文件冲突**：仍需手动解决
+
+`install.sh` 会：
+
+1. 把 merge driver 拷到 `.git/git-version/lib/merge-version.sh`
+2. 配置本地 `merge.version-max.driver`
+3. 写入 / 补全仓库根目录 `.gitattributes`：`.version merge=version-max`
+
+**注意**：`.gitattributes` 需要提交并推送；每位协作者仍需在该仓库执行一次 `install.sh`（driver 脚本和 `git config` 只在本机 `.git` 里）。
 
 </details>
 
@@ -197,8 +206,11 @@ git fetch origin && git reset --hard origin/main && git pushv
 git config --local --unset alias.pushv
 git config --local --unset alias.ggpushv
 git config --local --unset alias.push 2>/dev/null
+git config --local --unset merge.version-max.name
+git config --local --unset merge.version-max.driver
 rm -rf .git/git-version
 rm .git/hooks/pre-push
+# 可选：从 .gitattributes 删掉「.version merge=version-max」那一行
 ```
 
 </details>

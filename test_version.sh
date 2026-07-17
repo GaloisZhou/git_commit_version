@@ -35,4 +35,18 @@ if [[ ! "$next_first" =~ ^[0-9]{8}\.[0-9]{6}\.0$ ]]; then
 fi
 echo "OK: first version -> ${next_first}"
 
+# merge driver: writes max(seq)+1 into %A
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/git-version-test.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+printf '20260630.120000.3\n' > "${tmp}/ours"
+printf '20260630.130000.10\n' > "${tmp}/theirs"
+printf '20260630.110000.1\n' > "${tmp}/base"
+"${LIB_DIR}/merge-version.sh" "${tmp}/base" "${tmp}/ours" "${tmp}/theirs" >/dev/null
+merged="$(tr -d '[:space:]' < "${tmp}/ours")"
+if [[ ! "$merged" =~ ^[0-9]{8}\.[0-9]{6}\.11$ ]]; then
+  echo "FAIL: merge driver (got=${merged}, want=*.11)" >&2
+  exit 1
+fi
+echo "OK: merge driver -> ${merged}"
+
 echo "all tests passed"

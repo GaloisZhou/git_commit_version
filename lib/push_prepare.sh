@@ -25,6 +25,12 @@ integrate_remote_branch() {
   local remote="$1"
   local branch="$2"
 
+  # First push of a new branch: remote ref does not exist yet — skip fetch/rebase
+  if ! git ls-remote --exit-code --heads "$remote" "refs/heads/${branch}" >/dev/null 2>&1; then
+    echo "git-version: remote '${remote}/${branch}' does not exist yet; skipping fetch/rebase"
+    return 0
+  fi
+
   git fetch "$remote" "$branch"
 
   local remote_sha local_sha
@@ -162,6 +168,10 @@ push_prepare_for_args() {
   GIT_VERSION_PRE_AMEND_HEAD=""
 
   if ! push_prepare_parse_args "$@"; then
+    # --delete / --tags / etc.: skip quietly (not an error)
+    if [[ " $* " == *" --delete "* ]] || [[ " $* " == *" -d "* ]]; then
+      return 0
+    fi
     echo "git-version: skipping version update (unrecognized push target; use git pushv or git pushv origin <branch>)" >&2
     return 0
   fi
